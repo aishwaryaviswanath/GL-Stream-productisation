@@ -1,69 +1,94 @@
 # Extraction Config Viewer
 
-A React-based tool for Integration Engineers to visualize, understand, and modify ERP extraction configs without needing to read raw JSON.
+View and modify ERP extraction configs with human-readable names. Supports SAP HANA and SAP B1.
+
+## Quick Start
+
+**Prerequisites:** [Node.js](https://nodejs.org/) v18+ installed on your machine.
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/YOUR-ORG/gl-stream-productization.git
+cd gl-stream-productization/extraction-config-viewer
+
+# 2. Install dependencies
+npm install
+
+# 3. Start dev server
+npm run dev
+```
+
+Open **http://localhost:5173** in your browser. You'll see the config viewer.
+
+**To test immediately:** Copy the contents of `samples/sample-sap-b1.json` and paste into the viewer.
 
 ## What it does
 
-1. **Parses** extraction config JSON and auto-detects the ERP type (SAP HANA, SAP B1)
-2. **Displays** tables and columns with human-readable names, grouped by functional category
-3. **Shows filters** (hardcoded WHERE conditions) in a readable format
-4. **Modifies configs** via plain English prompts (powered by Claude AI)
-5. **Flags unmapped** tables/fields that aren't in the dictionary yet
+1. **Paste** an extraction config JSON → auto-detects ERP type (SAP HANA vs SAP B1)
+2. **View** tables and columns with English names, grouped by category (Accounting, AR, AP, etc.)
+3. **See filters** — all WHERE conditions in one consolidated view
+4. **Modify** via plain English (e.g., "Remove the Exchange Rate column from GL Headers")
+5. **Export** the modified JSON
 
-## Architecture
+## Project Structure
 
 ```
-src/
-├── dictionaries/           # ERP-specific table/field name mappings
-│   ├── index.js            # Registry: auto-detection + unified lookup
-│   ├── sap-hana.js         # SAP HANA (S/4HANA) dictionary
-│   └── sap-b1.js           # SAP Business One dictionary
-├── lib/
-│   ├── config-parser.js    # Core logic: merge tables, extract filters, apply ops
-│   └── ai-modifier.js      # AI engine: English → structured operations
-├── components/             # React components (future extraction)
-└── App.jsx                 # Main React application (single-file artifact)
+extraction-config-viewer/
+├── index.html                  # Entry HTML
+├── package.json                # Dependencies and scripts
+├── vite.config.js              # Vite config
+├── tailwind.config.js          # Tailwind config
+├── samples/                    # Sample configs for testing
+│   └── sample-sap-b1.json
+└── src/
+    ├── main.jsx                # React entry point
+    ├── index.css               # Tailwind imports
+    ├── App.jsx                 # Main application (all-in-one)
+    ├── dictionaries/           # ERP table/field name mappings
+    │   ├── index.js            # Registry + auto-detection
+    │   ├── sap-hana.js         # SAP HANA: 55 tables, 200+ fields
+    │   └── sap-b1.js           # SAP B1: 70+ tables, 180+ fields
+    └── lib/
+        ├── config-parser.js    # Merge tables, extract filters, apply ops
+        └── ai-modifier.js      # English → structured operations via Claude API
 ```
 
-## How to add a new ERP
+> **Note:** `App.jsx` is currently a self-contained single file with all logic and dictionaries inlined. The modular files in `dictionaries/` and `lib/` are the refactored versions for when you integrate into the SaaS platform. Both contain the same logic.
 
-### Step 1: Create the dictionary file
+## How to Add a New ERP (e.g., Oracle Fusion, D365)
 
-Create `src/dictionaries/your-erp.js`:
+Estimated time: ~30 minutes per ERP if you have the table/field reference.
+
+### Step 1: Create the dictionary
+
+Create `src/dictionaries/oracle-fusion.js`:
 
 ```javascript
-// Table name → Human readable name
 export const TABLES = {
   ra_customer_trx_all: "AR Transaction Headers",
   ra_customer_trx_lines_all: "AR Transaction Lines",
-  // ...
+  // ... add all tables
 };
 
-// Field name → Human readable name
 export const FIELDS = {
   customer_trx_id: "Transaction ID",
   trx_date: "Transaction Date",
-  // ...
+  // ... add all fields
 };
 
-// Categorize tables into functional groups
 export function categorize(tableName) {
-  if (["ra_customer_trx_all", "ra_customer_trx_lines_all"].includes(tableName))
-    return "Accounts Receivable";
-  // ...
+  if (["ra_customer_trx_all"].includes(tableName)) return "Accounts Receivable";
   return "Other";
 }
 
-// Example prompts for the Modify tab
 export const EXAMPLE_PROMPTS = [
-  "Remove the transaction date column from AR headers",
-  // ...
+  "Remove the transaction date from AR headers",
 ];
 ```
 
 ### Step 2: Register it
 
-In `src/dictionaries/index.js`:
+In `src/dictionaries/index.js`, add one import and one line:
 
 ```javascript
 import * as oracleFusion from "./oracle-fusion";
@@ -71,104 +96,40 @@ import * as oracleFusion from "./oracle-fusion";
 const DICTIONARIES = {
   "SAP HANA": sapHana,
   "SAP B1": sapB1,
-  "Oracle Fusion": oracleFusion,  // ← add this
+  "Oracle Fusion": oracleFusion,  // add this
 };
 ```
 
-Add detection patterns in `detectERP()` if needed.
-
 ### Step 3: Done
 
-The viewer will automatically:
-- Detect configs from your ERP
-- Display human-readable names
-- Show ERP-specific example prompts
-- Flag any unmapped fields
+Auto-detection, UI grouping, and AI modification all work automatically for the new ERP.
 
-## How the AI modification works
+## How AI Modification Works
 
-Instead of asking the AI to return the entire modified JSON (which truncates on large configs), we use a **two-step approach**:
+Instead of asking AI to return the entire modified JSON (which truncates on large configs), we use an operation-based approach:
 
-1. **AI translates** English → small operation objects:
-   ```json
-   [{"op": "remove_column", "table": "BKPF", "column": "KURSF"}]
-   ```
+1. User types: "Remove the Exchange Rate column from GL Headers"
+2. AI returns: `[{"op":"remove_column","table":"OJDT","column":"DocRate"}]`
+3. JavaScript applies the operation to the config deterministically
 
-2. **JavaScript applies** the operations programmatically to the config
+Supported operations:
 
-This means:
-- AI responses are always small (no truncation)
-- Operations are deterministic and auditable
-- The change history shows exactly what was modified
+| Operation | Example |
+|-----------|---------|
+| `remove_column` | `{"op":"remove_column","table":"BKPF","column":"KURSF"}` |
+| `remove_table` | `{"op":"remove_table","table":"ADRC"}` |
+| `add_filter` | `{"op":"add_filter","table":"OINV","column":"CANCELED","operator":"=","values":["N"]}` |
 
-### Supported operations
+## Available Scripts
 
-| Operation | JSON | What it does |
-|-----------|------|-------------|
-| Remove column | `{"op":"remove_column","table":"X","column":"Y"}` | Removes column Y from all config entries sourced from table X |
-| Remove table | `{"op":"remove_table","table":"X"}` | Removes all config entries for table X, including cascading dependencies |
-| Add filter | `{"op":"add_filter","table":"X","column":"Y","operator":"IN","values":["v1"]}` | Adds a WHERE condition to the first matching config entry |
+| Command | What it does |
+|---------|-------------|
+| `npm run dev` | Start dev server at localhost:5173 |
+| `npm run build` | Build for production (output in `dist/`) |
+| `npm run preview` | Preview production build locally |
 
-## Handling unmapped fields
+## Unmapped Fields
 
-When the viewer encounters a table or field not in the dictionary:
-- It displays the technical name with an amber "unmapped" indicator
-- The summary card shows a count of unmapped tables/fields
-- **Future**: For unmapped fields, trigger an AI call to look up the field description from SAP documentation, then cache the result in the dictionary
+When the viewer encounters a table or field not in the dictionary, it shows an amber "unmapped" indicator. The summary card shows a count of gaps. This tells you exactly what to add to the dictionary files.
 
-## Development
-
-This is currently a single-file React artifact (`App.jsx`) that runs in the Claude.ai artifact renderer. To use in a standalone React project:
-
-1. Split the imports from `App.jsx` to use the modular files in `src/`
-2. Install dependencies: `react`, `tailwindcss`
-3. The Anthropic API call in `ai-modifier.js` needs the Claude.ai context (API key is handled by the platform). For standalone use, add your API key to the headers.
-
-## Config JSON format
-
-The viewer expects a JSON object with a `tables` array:
-
-```json
-{
-  "tables": [
-    {
-      "name": "BKPF",
-      "fromTable": { "name": "BKPF", "alias": "t" },
-      "select": [
-        { "name": "BUKRS", "persist": true },
-        { "name": "BELNR", "persist": true }
-      ],
-      "where": [
-        {
-          "booleanOperator": "AND",
-          "listOfExpr": [
-            {
-              "expr": {
-                "column": { "alias": "t", "name": "BUKRS" },
-                "operator": "IN",
-                "value": ["8854"]
-              }
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Category icons
-
-Each ERP category gets a visual icon in the UI:
-
-| Category | Icon |
-|----------|------|
-| Accounting / General Ledger | 📒 |
-| Billing & Sales / AR | 🧾 |
-| Purchasing / AP | 📦 |
-| Business Partners | 🤝 |
-| India Localization | 🇮🇳 |
-| Tax Configuration | 🧮 |
-| Payments | 💳 |
-| Fixed Assets | 🏗️ |
-| Config & Reference Data | ⚙️ |
+Future enhancement: AI fallback lookup for unmapped fields — call Claude to identify the field from SAP docs, then cache the result in the dictionary.

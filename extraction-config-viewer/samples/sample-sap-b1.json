@@ -1,0 +1,79 @@
+{
+  "tables": [
+    {
+      "name": "OINV",
+      "persist": true,
+      "select": [
+        { "alias": "oinv", "name": "DocEntry", "persist": true },
+        { "alias": "oinv", "name": "DocNum" },
+        { "name": "GSTTranTyp", "alias": "oinv" },
+        { "name": "DocDate", "alias": "oinv" },
+        { "name": "BPLId", "alias": "oinv" },
+        { "name": "CardName", "alias": "oinv" },
+        { "name": "CANCELED", "alias": "oinv" },
+        { "name": "TaxDate", "alias": "oinv" },
+        { "name": "DocTotal", "alias": "oinv" },
+        { "name": "VatSum", "alias": "oinv" },
+        { "name": "ObjType", "alias": "oinv" },
+        { "name": "TransId", "alias": "oinv" },
+        { "name": "CardCode", "alias": "oinv" }
+      ],
+      "fromTable": { "name": "OINV", "alias": "oinv" },
+      "where": [
+        {
+          "booleanOperator": "AND",
+          "listOfExpr": [
+            {
+              "expr": {
+                "column": { "name": "DocDate", "alias": "oinv" },
+                "operator": ">=",
+                "value": ["20240401"]
+              }
+            }
+          ]
+        }
+      ],
+      "order_by": [
+        { "column": { "alias": "oinv", "name": "DocDate" }, "order": "DESCENDING" }
+      ]
+    },
+    {
+      "name": "INV1",
+      "fae": "OINV",
+      "persist": true,
+      "select": [
+        { "alias": "inv1", "name": "DocEntry", "persist": true },
+        { "alias": "inv1", "name": "ItemCode" },
+        { "alias": "inv1", "name": "LineNum", "persist": true },
+        { "alias": "inv1", "name": "Quantity", "persist": true },
+        { "alias": "inv1", "name": "Price", "persist": true },
+        { "alias": "inv1", "name": "LineTotal", "persist": true },
+        { "alias": "inv1", "name": "TaxCode", "persist": true },
+        { "alias": "inv1", "name": "HsnEntry", "persist": true },
+        { "alias": "inv1", "name": "AcctCode", "persist": true }
+      ],
+      "fromTable": {
+        "name": "INV1",
+        "alias": "inv1",
+        "join": [
+          {
+            "name": "OINV",
+            "alias": "oinv",
+            "on": [
+              { "left": { "alias": "inv1", "name": "DocEntry" }, "right": { "alias": "oinv", "name": "DocEntry" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "OACT",
+      "select": [
+        { "alias": "oact", "name": "AcctCode" },
+        { "alias": "oact", "name": "AcctName" },
+        { "alias": "oact", "name": "ActType" }
+      ],
+      "fromTable": { "name": "OACT", "alias": "oact" }
+    }
+  ]
+}
